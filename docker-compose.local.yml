@@ -1,0 +1,11 @@
+# Somente para testar no PC. Use junto com o arquivo principal:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+# No Dokploy este arquivo NÃO é usado: lá o Traefik expõe os serviços pelos domínios.
+services:
+  api:
+    ports:
+      # 127.0.0.1 = acessível só no seu PC, não na rede. Formato "host:container".
+      - "127.0.0.1:3001:3001"
+  front:
+    ports:
+      - "127.0.0.1:8080:80"

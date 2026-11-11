@@ -1,0 +1,125 @@
+# Nome do projeto: prefixo dos containers, redes e volumes (ex.: devburguer-api-1).
+name: devburguer
+
+services:
+  # ---------- Banco relacional (usuários, produtos, categorias) ----------
+  postgres:
+    # Mesma versão principal do Postgres local (18), para o pg_dump restaurar sem surpresas.
+    image: postgres:18
+    # Reinicia o container se ele cair, a não ser que você o pare manualmente.
+    restart: unless-stopped
+    environment:
+      # A imagem oficial cria o usuário, a senha e o banco na primeira inicialização.
+      # A sintaxe ${VAR:?msg} faz o compose falhar com a mensagem se a variável faltar.
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB}
+    volumes:
+      # Volume nomeado: os dados sobrevivem quando o container é recriado.
+      # No Postgres 18 o caminho mudou para /var/lib/postgresql (antes era .../data).
+      - postgres-data:/var/lib/postgresql
+    networks:
+      # Só a rede interna: nenhuma porta do banco fica acessível de fora.
+      - internal
+    healthcheck:
+      # Teste de "pronto para conexões". $$ escapa o $ para o shell do container ler a variável.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Banco de documentos (pedidos) ----------
+  mongo:
+    # Mesma versão principal do Mongo local (8.2).
+    image: mongo:8.2
+    restart: unless-stopped
+    environment:
+      # Cria o usuário administrador na primeira inicialização e liga a autenticação.
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?defina MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?defina MONGO_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - internal
+    healthcheck:
+      # O comando "ping" responde mesmo sem login e indica que o Mongo aceita conexões.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------- API (Express) ----------
+  api:
+    build:
+      # Pasta (no PC) ou URL do Git (no Dokploy) com o código e o Dockerfile da API.
+      context: ${API_CONTEXT:-../dev-burguer-api}
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      APP_URL: ${APP_URL:?defina APP_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN:?defina CORS_ORIGIN}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Dentro da rede do compose, cada serviço é encontrado pelo nome (postgres, mongo).
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      # authSource=admin: o usuário root do Mongo é criado no banco "admin".
+      MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/devburguer?authSource=admin
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?defina STRIPE_SECRET_KEY}
+      DELIVERY_FEE: ${DELIVERY_FEE:-500}
+    volumes:
+      # Imagens enviadas pelo admin. Na primeira vez o volume é preenchido
+      # com as imagens que já vêm na pasta uploads do repositório.
+      - uploads:/app/uploads
+    depends_on:
+      # Só sobe (e roda as migrations) quando os dois bancos passarem no healthcheck.
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      # internal para falar com os bancos; web para ser alcançada de fora e chamar o Stripe.
+      - internal
+      - web
+    # Porta disponível para os outros containers e para o proxy; não publica no host.
+    expose:
+      - "3001"
+    healthcheck:
+      # Considera a API saudável quando a rota pública /delivery-fee responde.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/delivery-fee').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # Tempo de tolerância para rodar as migrations antes de contar falhas.
+      start_period: 30s
+
+  # ---------- Front (React + Vite servido pelo Nginx) ----------
+  front:
+    build:
+      context: ${FRONT_CONTEXT:-../dev-burguer-interface}
+      # Valores gravados no JavaScript durante o build (o Vite não lê nada em tempo de execução).
+      args:
+        VITE_API_URL: ${VITE_API_URL:?defina VITE_API_URL}
+        VITE_STRIPE_PUBLIC_KEY: ${VITE_STRIPE_PUBLIC_KEY:?defina VITE_STRIPE_PUBLIC_KEY}
+    restart: unless-stopped
+    networks:
+      # O front só entrega arquivos estáticos; não precisa enxergar os bancos.
+      - web
+    expose:
+      - "80"
+
+networks:
+  # internal: true bloqueia qualquer saída para a internet e entrada de fora.
+  internal:
+    internal: true
+  # Rede comum, usada pela API e pelo front.
+  web: {}
+
+volumes:
+  # Volumes nomeados, gerenciados pelo Docker e preservados entre deploys.
+  postgres-data:
+  mongo-data:
+  uploads:
