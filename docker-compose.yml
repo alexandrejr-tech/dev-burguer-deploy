@@ -58,6 +58,8 @@ services:
       PORT: 3001
       APP_URL: ${APP_URL:?defina APP_URL}
       CORS_ORIGIN: ${CORS_ORIGIN:?defina CORS_ORIGIN}
+      # Proxies entre o visitante e a API (Traefik = 1), usado pelo rate limit.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       # Dentro da rede do compose, cada serviço é encontrado pelo nome (postgres, mongo).
