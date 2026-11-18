@@ -1,0 +1,17 @@
+# Dependabot: avisa sobre versões novas das imagens usadas no docker-compose.yml.
+# Atualizar banco de dados é decisão manual, com backup: majors são ignoradas.
+version: 2
+
+updates:
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Sao_Paulo
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+      - dependency-name: mongo
+        update-types: [version-update:semver-major]
