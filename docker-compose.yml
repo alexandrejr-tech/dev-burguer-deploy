@@ -7,7 +7,7 @@ services:
     # Mesma versão principal do Postgres local (18), para o pg_dump restaurar sem surpresas.
     # Fixada por digest: o Dokploy sobe exatamente esta imagem. O Dependabot abre um PR
     # quando a tag 18 ganha correções (versão major nova é ignorada: atualizar é manual).
-    image: postgres:18@sha256:2ea8630df176ad090ec92136dee850397c5af8781e4bcf2e4162593691c61bbc
+    image: postgres:18@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
     # Reinicia o container se ele cair, a não ser que você o pare manualmente.
     restart: unless-stopped
     environment:
